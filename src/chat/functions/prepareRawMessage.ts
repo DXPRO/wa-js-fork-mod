@@ -41,6 +41,7 @@ import {
   markIsPaused,
   markIsRecording,
 } from '.';
+import { addProgrammaticMessage } from './programmaticMessages';
 
 /**
  * Prepare a raw message
@@ -255,6 +256,18 @@ export async function prepareRawMessage<T extends RawMessage>(
       ...message,
       ...options.quotedMsg.msgContextInfo(chat.id),
     };
+  }
+
+  if (message.id) {
+    const rawId = typeof message.id === 'string' ? message.id : message.id.id;
+    const rawTo = message.to
+      ? typeof message.to === 'string'
+        ? message.to
+        : message.to.toString()
+      : '';
+    if (rawId && rawTo) {
+      addProgrammaticMessage(rawId, rawTo);
+    }
   }
 
   return message;

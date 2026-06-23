@@ -62,6 +62,11 @@ export {
 } from './prepareMessageButtons';
 export { prepareRawMessage } from './prepareRawMessage';
 export {
+  addProgrammaticMessage,
+  hasActiveProgrammaticMessageForChat,
+  isProgrammaticMessage,
+} from './programmaticMessages';
+export {
   ButtonReplyOptions,
   replyToButtonMessage,
 } from './replyToButtonMessage';
