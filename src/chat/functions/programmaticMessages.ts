@@ -54,10 +54,14 @@ export function hasActiveProgrammaticMessageForChat(
 
   const now = Date.now();
   // Limpeza preventiva de mensagens expiradas no mapa
+  const expiredIds: string[] = [];
   for (const [id, data] of programmaticMessages.entries()) {
     if (now - data.timestamp > 120000) {
-      programmaticMessages.delete(id);
+      expiredIds.push(id);
     }
+  }
+  for (const id of expiredIds) {
+    programmaticMessages.delete(id);
   }
 
   for (const data of programmaticMessages.values()) {
