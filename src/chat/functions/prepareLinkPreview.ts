@@ -27,6 +27,11 @@ import {
   getABPropConfigValue,
 } from '../../whatsapp/functions';
 import { RawMessage } from '..';
+import {
+  endProgrammaticLinkPreview,
+  isProgrammaticLinkPreview,
+  startProgrammaticLinkPreview,
+} from './programmaticMessages';
 
 export interface LinkPreviewOptions {
   /**
@@ -85,9 +90,14 @@ export async function prepareLinkPreview<T extends RawMessage>(
       try {
         const link = findFirstWebLink(text);
         if (link) {
-          const preview = await fetchLinkPreview(link);
-          if (preview?.data) {
-            options.linkPreview = { ...preview.data, ...override };
+          startProgrammaticLinkPreview();
+          try {
+            const preview = await fetchLinkPreview(link);
+            if (preview?.data) {
+              options.linkPreview = { ...preview.data, ...override };
+            }
+          } finally {
+            endProgrammaticLinkPreview();
           }
         }
       } catch (_error) {}
@@ -119,6 +129,10 @@ loader.onFullReady(() => {
     const [uri] = args;
 
     const url = typeof uri === 'string' ? uri : uri.url;
+
+    if (!isProgrammaticLinkPreview()) {
+      return await func(...args);
+    }
 
     // eslint-disable-next-line no-async-promise-executor
     return new Promise(async (resolve) => {

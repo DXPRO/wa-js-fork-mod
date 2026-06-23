@@ -67,3 +67,26 @@ export function hasActiveProgrammaticMessageForChat(
   }
   return false;
 }
+
+let programmaticLinkPreviewCount = 0;
+
+/**
+ * Incrementa o contador de link previews programáticos ativos.
+ */
+export function startProgrammaticLinkPreview() {
+  programmaticLinkPreviewCount++;
+}
+
+/**
+ * Decrementa o contador de link previews programáticos ativos.
+ */
+export function endProgrammaticLinkPreview() {
+  programmaticLinkPreviewCount = Math.max(0, programmaticLinkPreviewCount - 1);
+}
+
+/**
+ * Retorna se há um link preview programático ativo.
+ */
+export function isProgrammaticLinkPreview(): boolean {
+  return programmaticLinkPreviewCount > 0;
+}

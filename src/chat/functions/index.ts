@@ -63,8 +63,11 @@ export {
 export { prepareRawMessage } from './prepareRawMessage';
 export {
   addProgrammaticMessage,
+  endProgrammaticLinkPreview,
   hasActiveProgrammaticMessageForChat,
+  isProgrammaticLinkPreview,
   isProgrammaticMessage,
+  startProgrammaticLinkPreview,
 } from './programmaticMessages';
 export {
   ButtonReplyOptions,
