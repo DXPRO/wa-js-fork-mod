@@ -1,5 +1,5 @@
 /*!
- * Copyright 2021 WPPConnect Team
+ * Copyright 2026 WPPConnect Team
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,29 +16,17 @@
 
 import { internalEv } from '../../eventEmitter';
 import * as loader from '../../loader';
-import { ChatModel, ChatStore, MsgKey } from '../../whatsapp';
+import { Cmd } from '../../whatsapp';
 
-loader.onInjected(() => register());
-let emitTimeout: any = null;
+loader.onInjected(registerHistorySyncChunkProcessed);
 
-function register() {
-  ChatStore.on('change:active', (chat: ChatModel) => {
-    if (chat.active) {
-      const key = chat.lastReceivedKey;
-      if (key) {
-        if (typeof key === 'object') {
-          MsgKey.from(key);
-        }
-        void key._serialized;
-      }
+function registerHistorySyncChunkProcessed() {
+  Cmd.on(
+    'new_history_sync_chunk_processed_from_bridge',
+    (data: { chatsUpdated: string[] }) => {
+      internalEv.emit('chat.history_sync_chunk_processed', {
+        chatsUpdated: data?.chatsUpdated || [],
+      });
     }
-
-    if (emitTimeout) {
-      clearTimeout(emitTimeout);
-    }
-
-    emitTimeout = setTimeout(() => {
-      internalEv.emit('chat.active_chat', chat.active ? chat : null);
-    }, 50);
-  });
+  );
 }

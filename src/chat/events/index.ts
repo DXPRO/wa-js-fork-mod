@@ -26,3 +26,4 @@ import './registerPresenceChange';
 import './registerReactionsEvent';
 import './registerRevokeMessageEvent';
 import './registerUnreadCountEvent';
+import './registerHistorySyncChunkProcessed';

@@ -44,6 +44,7 @@ export declare class MsgKey {
   equals(key: unknown): key is MsgKey;
 
   static fromString(key: string): MsgKey;
+  static from(key: any): MsgKey;
 
   /**
    * @whatsapp >= 2.2208.7
@@ -57,9 +58,14 @@ exportModule(
     MsgKey: 'default',
   },
   (m) => {
-    if (
-      !m?.default?.toString().includes('MsgKey error: obj is null/undefined')
-    ) {
+    const isMsgKey =
+      m?.default &&
+      (m.default.toString().includes('MsgKey error: obj is null/undefined') ||
+        (typeof m.default.fromString === 'function' &&
+          (m.default.toString().includes('MsgKey') ||
+            m.default.toString().includes('fromString') ||
+            m.default.prototype?.equals)));
+    if (!isMsgKey) {
       return false;
     }
 
@@ -71,81 +77,180 @@ exportModule(
      * back to an own enumerable `_serialized` on each instance.
      */
     try {
-      const proto = m.default.prototype;
-      const cached = /\breturn this\.([$A-Za-z_][\w$]*)/.exec(
-        Function.prototype.toString.call(proto.toString)
-      )?.[1];
+      const OriginalMsgKey = m.default;
+      const proto = OriginalMsgKey.prototype;
 
-      if (
-        cached &&
-        cached !== '_serialized' &&
-        !Object.getOwnPropertyDescriptor(proto, cached)
-      ) {
-        const defineSerialized = (target: any, value: string) => {
-          Object.defineProperty(target, '_serialized', {
-            value,
-            writable: true,
-            enumerable: true,
-            configurable: true,
-          });
-        };
-
-        /**
-         * Instances created before this patch ran carry the minified
-         * property as an own data property (which shadows the accessor
-         * installed below), so they never received `_serialized` — e.g.
-         * every key already loaded in MsgStore at injection time. Convert
-         * the own minified property into an own `_serialized`.
-         */
-        const migrateInstance = (key: any) => {
-          const own = Object.getOwnPropertyDescriptor(key, cached);
-          if (own) {
-            delete key[cached];
-            defineSerialized(key, own.value);
+      // 1. Descobrir a propriedade de cache dinamicamente criando uma instância de teste
+      let cached: string | undefined = undefined;
+      try {
+        const wid = new Wid('123@c.us');
+        const testKey = new OriginalMsgKey({
+          fromMe: true,
+          remote: wid,
+          id: 'abc',
+        });
+        const expectedValue = 'true_123@c.us_abc';
+        for (const key in testKey) {
+          if (testKey[key] === expectedValue) {
+            cached = key;
+            break;
           }
-        };
+        }
+      } catch (_e) {
+        // Ignora falha de instanciação
+      }
+
+      // 2. Fallback de regex caso a detecção dinâmica falhe
+      try {
+        if (!cached && proto.toString) {
+          cached = /\bthis\.([$A-Za-z_][\w$]*)/.exec(
+            Function.prototype.toString.call(proto.toString)
+          )?.[1];
+        }
+      } catch (_e) {
+        // Ignora falha de regex
+      }
+
+      // Fallback padrão se tudo falhar
+      if (!cached) {
+        cached = '$1';
+      }
+
+      // 3. Se a propriedade minificada foi encontrada, configura alias no prototype de forma segura e não-recursiva
+      if (cached && cached !== '_serialized') {
+        Object.defineProperty(proto, '_serialized', {
+          configurable: true,
+          enumerable: true,
+          get: function (this: any) {
+            const ownDesc = Object.getOwnPropertyDescriptor(this, cached!);
+            if (ownDesc) {
+              return ownDesc.value;
+            }
+            return undefined;
+          },
+          set: function (this: any, value: string) {
+            Object.defineProperty(this, '_serialized', {
+              value,
+              writable: true,
+              enumerable: true,
+              configurable: true,
+            });
+          },
+        });
 
         Object.defineProperty(proto, cached, {
           configurable: true,
           get: function (this: any) {
-            return this._serialized;
+            const ownDesc = Object.getOwnPropertyDescriptor(
+              this,
+              '_serialized'
+            );
+            if (ownDesc) {
+              return ownDesc.value;
+            }
+            return undefined;
           },
           set: function (this: any, value: string) {
-            defineSerialized(this, value);
+            Object.defineProperty(this, '_serialized', {
+              value,
+              writable: true,
+              enumerable: true,
+              configurable: true,
+            });
           },
         });
 
-        Object.defineProperty(proto, '_serialized', {
-          configurable: true,
-          get: function (this: any) {
-            migrateInstance(this);
-            return Object.getOwnPropertyDescriptor(this, '_serialized')?.value;
-          },
-          set: function (this: any, value: string) {
-            defineSerialized(this, value);
-          },
-        });
+        // Função de migração segura e in-place na própria instância (adiciona o _serialized sem deletar o cache nativo)
+        const migrateInstance = (key: any) => {
+          if (key && cached) {
+            const ownDesc = Object.getOwnPropertyDescriptor(key, cached);
+            if (
+              ownDesc &&
+              !Object.prototype.hasOwnProperty.call(key, '_serialized')
+            ) {
+              Object.defineProperty(key, '_serialized', {
+                value: ownDesc.value,
+                writable: true,
+                enumerable: true,
+                configurable: true,
+              });
+            }
+          }
+        };
 
-        // Migrate pre-patch instances whenever they are serialized, so the
-        // own enumerable `_serialized` exists before structural copies
-        // (spread, JSON, devtools/CDP serialization) that never trigger the
-        // getter above.
         const originalToString = proto.toString;
         proto.toString = function (this: any) {
           migrateInstance(this);
           return originalToString.call(this);
         };
-        if (!('toJSON' in proto)) {
-          Object.defineProperty(proto, 'toJSON', {
-            configurable: true,
-            writable: true,
-            value: function (this: any) {
-              migrateInstance(this);
-              return this;
-            },
-          });
-        }
+
+        // toJSON retorna uma representação limpa sem a propriedade minificada poluindo
+        Object.defineProperty(proto, 'toJSON', {
+          configurable: true,
+          writable: true,
+          value: function (this: any) {
+            return {
+              id: this.id,
+              fromMe: this.fromMe,
+              remote: this.remote,
+              _serialized: this._serialized || this[cached!],
+            };
+          },
+        });
+
+        // Método estático para migração explícita no código do wa-js
+        OriginalMsgKey.from = function (key: any) {
+          if (key instanceof OriginalMsgKey) {
+            migrateInstance(key);
+            return key;
+          }
+          if (key && typeof key === 'object') {
+            const newKey = new OriginalMsgKey(key);
+            migrateInstance(newKey);
+            return newKey;
+          }
+          return key;
+        };
       }
+
+      // 4. Envolver o construtor padrão com um Wrapper para instâncias criadas pelo wa-js
+      try {
+        const MsgKeyWrapper = function (this: any, ...args: any[]) {
+          const instance = Reflect.construct(
+            OriginalMsgKey,
+            args,
+            MsgKeyWrapper
+          );
+          try {
+            if (cached) {
+              const ownDesc = Object.getOwnPropertyDescriptor(instance, cached);
+              if (ownDesc) {
+                // Não deletamos o cache nativo no runtime para evitar quebrar o estado de lido do WhatsApp Web
+                Object.defineProperty(instance, '_serialized', {
+                  value: ownDesc.value,
+                  writable: true,
+                  enumerable: true,
+                  configurable: true,
+                });
+              }
+            }
+          } catch (_e) {
+            // Ignora
+          }
+          return instance;
+        };
+
+        // Preserva métodos estáticos e herança do protótipo
+        Object.setPrototypeOf(MsgKeyWrapper, OriginalMsgKey);
+        MsgKeyWrapper.prototype = OriginalMsgKey.prototype;
+
+        // Sobrescreve a exportação padrão do módulo
+        m.default = MsgKeyWrapper as any;
+      } catch (_e) {
+        // Ignora
+      }
+
+      console.info('[WA-JS] MsgKey patch initialized successfully.');
     } catch {}
 
     return true;

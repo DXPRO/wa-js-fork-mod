@@ -19,6 +19,7 @@ import {
   ChatStore,
   GroupMetadataStore,
   LabelStore,
+  MsgKey,
   NewsletterStore,
   Wid,
 } from '../../whatsapp';
@@ -36,15 +37,27 @@ export interface ChatListOptions {
   onlyArchived?: boolean;
   withLabels?: string[];
   ignoreGroupMetadata?: boolean;
+  groupMetadataTimeout?: number;
+  waitForSync?: boolean;
+  syncTimeoutMs?: number;
 }
 
 /**
- * Return a list of chats
+ * Return a list of chats.
+ *
+ * By default, this function waits up to 5 seconds for the background history sync chunks to be processed
+ * to ensure chats are loaded. Set `waitForSync: false` to list immediately with currently cached data.
  *
  * @example
  * ```javascript
- * // All chats
+ * // All chats (waits up to 5 seconds by default)
  * const chats = await WPP.chat.list();
+ *
+ * // List immediately without waiting for sync
+ * const chats = await WPP.chat.list({ waitForSync: false });
+ *
+ * // Wait for sync with a custom timeout of 30 seconds
+ * const chats = await WPP.chat.list({ waitForSync: true, syncTimeoutMs: 30000 });
  *
  * // Some chats
  * const chats = WPP.chat.list({count: 20});
@@ -85,6 +98,11 @@ export interface ChatListOptions {
 export async function list(
   options: ChatListOptions = {}
 ): Promise<ChatModel[]> {
+  if (options.waitForSync ?? true) {
+    const { waitHistorySync } = await import('./waitHistorySync');
+    await waitHistorySync({ timeoutMs: options.syncTimeoutMs });
+  }
+
   // Setting the check to null, so it doesn't break existing codes.
   const count = options.count == null ? Infinity : options.count;
   const direction = options.direction === 'before' ? 'before' : 'after';
@@ -144,10 +162,49 @@ export async function list(
 
   // Attaching Group Metadata on Found Chats.
   if (!options?.ignoreGroupMetadata) {
-    for (const chat of models) {
+    const defaultTimeout = 10000;
+    const timeoutMs = options?.groupMetadataTimeout ?? defaultTimeout;
+
+    const promises = models.map(async (chat) => {
       if (chat.id.isGroup()) {
-        await GroupMetadataStore.find(chat.id);
+        try {
+          const cachedMetadata =
+            chat.groupMetadata ?? GroupMetadataStore.get(chat.id);
+
+          if (cachedMetadata && !chat.groupMetadata) {
+            chat.groupMetadata = cachedMetadata;
+          }
+
+          const metadata = await Promise.race([
+            GroupMetadataStore.find(chat.id),
+            new Promise<never>((_, reject) =>
+              setTimeout(
+                () => reject(new Error('Timeout fetching group metadata')),
+                timeoutMs
+              )
+            ),
+          ]);
+
+          if (metadata && !chat.groupMetadata) {
+            chat.groupMetadata = metadata;
+          }
+        } catch (_e) {
+          // Ignora o erro/timeout para não travar a lista
+        }
       }
+    });
+
+    await Promise.all(promises);
+  }
+
+  // Força a re-hidratação e migração das chaves de mensagens de chats carregados
+  for (const chat of models) {
+    const key = chat.lastReceivedKey;
+    if (key) {
+      if (typeof key === 'object') {
+        MsgKey.from(key);
+      }
+      void key._serialized;
     }
   }
 

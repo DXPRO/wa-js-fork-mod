@@ -213,4 +213,11 @@ export interface ChatEventTypes {
     labels: Label[];
     type: 'add' | 'remove';
   };
+
+  /**
+   * Triggered when a new history sync chunk of chats is processed by IndexedDB in background
+   */
+  'chat.history_sync_chunk_processed': {
+    chatsUpdated: string[];
+  };
 }

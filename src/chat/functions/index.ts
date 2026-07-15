@@ -113,3 +113,4 @@ export { setInputText } from './setInputText';
 export { setNotes } from './setNotes';
 export { starMessage, StarMessageReturn } from './starMessage';
 export { unmute } from './unmute';
+export { waitHistorySync, WaitHistorySyncOptions } from './waitHistorySync';

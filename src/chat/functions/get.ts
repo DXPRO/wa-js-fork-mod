@@ -15,7 +15,13 @@
  */
 
 import { assertWid } from '../../assert';
-import { ChatModel, ChatStore, NewsletterStore, Wid } from '../../whatsapp';
+import {
+  ChatModel,
+  ChatStore,
+  MsgKey,
+  NewsletterStore,
+  Wid,
+} from '../../whatsapp';
 
 /**
  * Find a chat by id
@@ -24,9 +30,20 @@ import { ChatModel, ChatStore, NewsletterStore, Wid } from '../../whatsapp';
  */
 export function get(chatId: string | Wid): ChatModel | undefined {
   const wid = assertWid(chatId);
+  let chat;
   if (wid.server === 'newsletter') {
-    return NewsletterStore.get(wid);
+    chat = NewsletterStore.get(wid);
   } else {
-    return ChatStore.get(wid);
+    chat = ChatStore.get(wid);
   }
+  if (chat) {
+    const key = chat.lastReceivedKey;
+    if (key) {
+      if (typeof key === 'object') {
+        MsgKey.from(key);
+      }
+      void key._serialized;
+    }
+  }
+  return chat;
 }

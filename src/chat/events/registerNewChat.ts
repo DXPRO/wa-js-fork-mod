@@ -16,12 +16,19 @@
 
 import { internalEv } from '../../eventEmitter';
 import * as loader from '../../loader';
-import { ChatModel, ChatStore } from '../../whatsapp';
+import { ChatModel, ChatStore, MsgKey } from '../../whatsapp';
 
 loader.onInjected(() => registerNewChat());
 
 function registerNewChat() {
   ChatStore.on('add', (chat: ChatModel) => {
+    const key = chat.lastReceivedKey;
+    if (key) {
+      if (typeof key === 'object') {
+        MsgKey.from(key);
+      }
+      void key._serialized;
+    }
     queueMicrotask(() => {
       internalEv.emit('chat.new_chat', chat);
     });
